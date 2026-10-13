@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>封包迷宮 Packet Maze</title>
+<style>
+:root{
+  --bg:#f5f6fa;--panel:#ffffff;--ink:#1c2333;--muted:#667085;--border:#e3e6ee;
+  --line:#b9c1d1;--node:#eef1f7;--nodeStroke:#8a94a8;--accent:#2f6fec;--accentInk:#fff;
+  --src:#15994a;--dst:#d9480f;--fault:#e03131;--trail:#7c3aed;--pkt:#f59f00;
+  --barXY:#4c6ef5;--barWF:#12b886;--barBFS:#ae3ec9;--shadow:0 1px 3px rgba(20,30,60,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e131d;--panel:#171d2a;--ink:#e6e9f0;--muted:#98a2b3;--border:#263044;
+    --line:#46516a;--node:#222b3c;--nodeStroke:#6b7690;--accent:#5b8cff;--accentInk:#0b1020;
+    --src:#3ccf73;--dst:#ff8a4c;--fault:#ff5c5c;--trail:#a78bfa;--pkt:#ffc53d;
+    --barXY:#748ffc;--barWF:#38d9a9;--barBFS:#da77f2;--shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e131d;--panel:#171d2a;--ink:#e6e9f0;--muted:#98a2b3;--border:#263044;
+  --line:#46516a;--node:#222b3c;--nodeStroke:#6b7690;--accent:#5b8cff;--accentInk:#0b1020;
+  --src:#3ccf73;--dst:#ff8a4c;--fault:#ff5c5c;--trail:#a78bfa;--pkt:#ffc53d;
+  --barXY:#748ffc;--barWF:#38d9a9;--barBFS:#da77f2;--shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;line-height:1.55}
+header{max-width:1120px;margin:0 auto;padding:20px 16px 8px;display:flex;align-items:center;gap:12px;justify-content:space-between}
+h1{margin:0;font-size:1.45rem;letter-spacing:.02em}
+h1 small{display:block;font-size:.85rem;font-weight:400;color:var(--muted);margin-top:2px}
+.icon-btn{border:1px solid var(--border);background:var(--panel);color:var(--ink);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:.9rem;flex-shrink:0}
+main{max-width:1120px;margin:0 auto;padding:8px 16px 32px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+.card h2{font-size:1rem;margin:0 0 10px}
+#meshCard{grid-column:1;padding:12px}
+#mesh{width:100%;height:auto;display:block;touch-action:manipulation;user-select:none}
+aside{grid-column:2;grid-row:1 / span 3;display:flex;flex-direction:column;gap:16px}
+#resultCard{grid-column:1}
+#batchCard{grid-column:1}
+label.f{display:block;font-size:.85rem;color:var(--muted);margin:12px 0 6px}
+label.f:first-of-type{margin-top:0}
+select,input[type=range]{width:100%}
+select{padding:8px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-size:.95rem}
+.seg{display:flex;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.seg button{flex:1;border:0;background:transparent;color:var(--ink);padding:8px;cursor:pointer;font-size:.9rem}
+.seg button.on[data-v="src"]{background:var(--src);color:#fff}
+.seg button.on[data-v="dst"]{background:var(--dst);color:#fff}
+.row{display:flex;gap:8px;margin-top:10px}
+.btn{flex:1;border:1px solid var(--border);background:var(--bg);color:var(--ink);border-radius:10px;padding:9px 10px;cursor:pointer;font-size:.9rem}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accentInk);font-weight:600;font-size:1rem;padding:11px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.val{float:right;color:var(--ink);font-variant-numeric:tabular-nums}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:.85rem;color:var(--muted);align-items:center}
+.sw{width:22px;height:14px;display:inline-block;border-radius:3px}
+.hint{font-size:.85rem;color:var(--muted);margin:0}
+#status{font-size:1.05rem;font-weight:600;margin:0 0 8px}
+#status.ok{color:var(--src)}#status.bad{color:var(--fault)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.stat{background:var(--bg);border-radius:10px;padding:8px 10px}
+.stat b{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums}
+.stat span{font-size:.78rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
+th{color:var(--muted);font-weight:500;font-size:.8rem}
+td.ok{color:var(--src)}td.bad{color:var(--fault)}
+.bars{display:flex;flex-direction:column;gap:12px}
+.bar-row .top{display:flex;justify-content:space-between;font-size:.88rem;margin-bottom:4px}
+.bar-row .top span:last-child{color:var(--muted);font-variant-numeric:tabular-nums}
+.track{height:14px;background:var(--bg);border-radius:7px;overflow:hidden}
+.fill{height:100%;width:0;border-radius:7px;transition:width .6s ease}
+details{font-size:.9rem}
+details summary{cursor:pointer;font-weight:600}
+details p{margin:8px 0 0;color:var(--muted)}
+/* SVG */
+.link{stroke:var(--line);stroke-width:4;stroke-linecap:round}
+.link.fault{stroke:var(--fault);stroke-dasharray:6 6;stroke-width:3}
+.hit{stroke:transparent;stroke-width:20;cursor:pointer}
+.hit:hover + .link,.linkg:hover .link{stroke-width:6}
+.node rect{fill:var(--node);stroke:var(--nodeStroke);stroke-width:1.5}
+.node{cursor:pointer}
+.node:hover rect{stroke:var(--accent);stroke-width:2.5}
+.node.src rect{fill:var(--src);stroke:var(--src)}
+.node.dst rect{fill:var(--dst);stroke:var(--dst)}
+.node text{font-size:10px;fill:var(--muted);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.node.src text,.node.dst text{fill:#fff;font-weight:700}
+.trail{stroke:var(--trail);stroke-width:5;stroke-linecap:round;opacity:.75;fill:none}
+.pkt{fill:var(--pkt);stroke:#fff;stroke-width:2}
+.xmark{stroke:var(--fault);stroke-width:4;stroke-linecap:round}
+@media (max-width:820px){
+  main{grid-template-columns:minmax(0,1fr)}
+  aside{grid-column:1;grid-row:auto}
+  #meshCard,#resultCard,#batchCard{grid-column:1}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>封包迷宮 Packet Maze<small>弄壞晶片內網路的連線，看封包怎麼繞路</small></h1>
+  <button class="icon-btn" id="themeBtn" title="切換深淺色">◐ 主題</button>
+</header>
+
+<main>
+  <section class="card" id="meshCard">
+    <svg id="mesh" aria-label="格狀網路"></svg>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>控制面板</h2>
+      <label class="f" for="size">網路大小</label>
+      <select id="size">
+        <option value="4">4 × 4</option><option value="5">5 × 5</option>
+        <option value="6" selected>6 × 6</option><option value="7">7 × 7</option>
+        <option value="8">8 × 8</option>
+      </select>
+
+      <label class="f" for="alg">路由演算法</label>
+      <select id="alg">
+        <option value="XY">XY 維度順序路由</option>
+        <option value="WF">West-First 轉向模型</option>
+        <option value="BFS">容錯最短路徑（BFS）</option>
+      </select>
+
+      <label class="f">點擊節點設為</label>
+      <div class="seg" id="pickSeg">
+        <button data-v="src" class="on">起點</button>
+        <button data-v="dst">終點</button>
+      </div>
+
+      <label class="f" for="rate">隨機故障率 <span class="val" id="rateVal">15%</span></label>
+      <input type="range" id="rate" min="0" max="30" value="15">
+      <div class="row">
+        <button class="btn" id="randBtn">隨機故障</button>
+        <button class="btn" id="clearBtn">全部修好</button>
+      </div>
+
+      <label class="f" for="speed">動畫速度 <span class="val" id="speedVal">中</span></label>
+      <input type="range" id="speed" min="0" max="100" value="55">
+
+      <div class="row"><button class="btn primary" id="sendBtn">▶ 發送封包</button></div>
+      <div class="row"><button class="btn" id="batchBtn">大量測試（300 個封包）</button></div>
+    </div>
+
+    <div class="card">
+      <h2>圖例</h2>
+      <div class="legend">
+        <span class="sw" style="background:var(--src)"></span>起點
+        <span class="sw" style="background:var(--dst)"></span>終點
+        <span class="sw" style="background:var(--line)"></span>正常連線（點擊可弄壞）
+        <span class="sw" style="background:repeating-linear-gradient(90deg,var(--fault) 0 5px,transparent 5px 9px)"></span>故障連線
+        <span class="sw" style="background:var(--trail)"></span>封包走過的路
+      </div>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>三種演算法差在哪？</summary>
+        <p><b>XY</b>：先橫走到目標欄、再直走。最簡單，但路上只要一條線壞了就送不到。</p>
+        <p><b>West-First</b>：要往西就先把西邊走完，之後在東、南、北中挑沒壞的方向前進。能閃開部分故障。</p>
+        <p><b>BFS</b>：知道整張網路哪裡壞了，直接找最短的可行路線。是理想上限，實際硬體很難做到。</p>
+      </details>
+    </div>
+  </aside>
+
+  <section class="card" id="resultCard">
+    <h2>本次結果</h2>
+    <p id="status" class="hint">點「發送封包」開始。試著在封包的路上弄壞一條線！</p>
+    <div class="stats">
+      <div class="stat"><b id="sHops">–</b><span>實際跳數</span></div>
+      <div class="stat"><b id="sMin">–</b><span>最短距離</span></div>
+      <div class="stat"><b id="sDetour">–</b><span>繞路多走</span></div>
+      <div class="stat"><b id="sFaults">0</b><span>故障連線數</span></div>
+    </div>
+    <table>
+      <thead><tr><th>同一組起訖點</th><th>結果</th><th>跳數</th></tr></thead>
+      <tbody id="cmpBody"><tr><td colspan="3" class="hint">發送後顯示三種演算法的比較</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="card" id="batchCard">
+    <h2>大量測試：送達率比較</h2>
+    <p class="hint" id="batchHint">在目前的故障狀態下隨機送 300 個封包，看哪種演算法最可靠。</p>
+    <div class="bars" id="bars" style="margin-top:12px"></div>
+  </section>
+</main>
+
+<script>
+(function(){
+  const NS = 'http://www.w3.org/2000/svg';
+  const SP = 80, M = 36;
+  const svg = document.getElementById('mesh');
+  const $ = id => document.getElementById(id);
+  const ALG_NAME = { XY:'XY 維度順序', WF:'West-First', BFS:'容錯最短路徑' };
+  const DIRS = { E:[1,0], W:[-1,0], N:[0,-1], S:[0,1] };
+
+  let N = 6, faults = new Set(), src = 0, dst = 35, pick = 'src', busy = false;
+
+  /* ---------- 基本工具 ---------- */
+  const key = (a,b) => a < b ? a + '-' + b : b + '-' + a;
+  const xy = id => [id % N, Math.floor(id / N)];
+  const idOf = (x,y) => y * N + x;
+  const pos = id => { const [x,y] = xy(id); return [M + x*SP, M + y*SP]; };
+  const linkOk = (a,b) => b >= 0 && !faults.has(key(a,b));
+  const manhattan = (a,b) => { const [ax,ay]=xy(a),[bx,by]=xy(b); return Math.abs(ax-bx)+Math.abs(ay-by); };
+  function neighbor(id, dir){
+    const [x,y] = xy(id), d = DIRS[dir], nx = x+d[0], ny = y+d[1];
+    return (nx<0||ny<0||nx>=N||ny>=N) ? -1 : idOf(nx,ny);
+  }
+  function el(tag, attrs, parent){
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  /* ---------- 路由演算法 ---------- */
+  function routeXY(s,d){
+    const path=[s]; let c=s;
+    while(c!==d){
+      const [cx,cy]=xy(c),[dx,dy]=xy(d);
+      const dir = cx<dx?'E':cx>dx?'W':cy<dy?'S':'N';
+      const n = neighbor(c,dir);
+      if(!linkOk(c,n)) return {path, ok:false, blocked:[c,n]};
+      c=n; path.push(c);
+    }
+    return {path, ok:true, blocked:null};
+  }
+  function routeWF(s,d){
+    const path=[s]; let c=s;
+    while(c!==d){
+      const [cx,cy]=xy(c),[dx,dy]=xy(d);
+      if(dx<cx){ // 必須先往西
+        const n=neighbor(c,'W');
+        if(!linkOk(c,n)) return {path, ok:false, blocked:[c,n]};
+        c=n; path.push(c); continue;
+      }
+      const cands=[];
+      if(dx>cx) cands.push(['E',dx-cx]);
+      if(dy>cy) cands.push(['S',dy-cy]);
+      if(dy<cy) cands.push(['N',cy-dy]);
+      cands.sort((a,b)=>b[1]-a[1]);
+      let moved=false, firstBlocked=null;
+      for(const [dir] of cands){
+        const n=neighbor(c,dir);
+        if(linkOk(c,n)){ c=n; path.push(c); moved=true; break; }
+        if(!firstBlocked) firstBlocked=[c,n];
+      }
+      if(!moved) return {path, ok:false, blocked:firstBlocked};
+    }
+    return {path, ok:true, blocked:null};
+  }
+  function routeBFS(s,d){
+    const prev=new Array(N*N).fill(-1); prev[s]=s;
+    const q=[s];
+    for(let h=0; h<q.length; h++){
+      const c=q[h]; if(c===d) break;
+      for(const dir of ['E','W','N','S']){
+        const n=neighbor(c,dir);
+        if(n<0||prev[n]!==-1||!linkOk(c,n)) continue;
+        prev[n]=c; q.push(n);
+      }
+    }
+    if(prev[d]===-1) return {path:[s], ok:false, blocked:null};
+    const path=[]; let c=d;
+    while(c!==s){ path.push(c); c=prev[c]; }
+    path.push(s); path.reverse();
+    return {path, ok:true, blocked:null};
+  }
+  const ROUTERS = { XY:routeXY, WF:routeWF, BFS:routeBFS };
+
+  /* ---------- 繪製 ---------- */
+  let gTrail, gPkt;
+  function render(){
+    const size = M*2 + (N-1)*SP;
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.innerHTML = '';
+    const gL = el('g',{},svg);
+    gTrail = el('g',{},svg);
+    const gN = el('g',{},svg);
+    gPkt = el('g',{},svg);
+
+    for(let id=0; id<N*N; id++){
+      for(const dir of ['E','S']){
+        const n = neighbor(id,dir); if(n<0) continue;
+        const [x1,y1]=pos(id),[x2,y2]=pos(n), k=key(id,n);
+        const g = el('g',{class:'linkg'},gL);
+        const hit = el('line',{x1,y1,x2,y2,class:'hit'},g);
+        el('line',{x1,y1,x2,y2,class:'link'+(faults.has(k)?' fault':'')},g);
+        hit.addEventListener('click',()=>{
+          if(busy) return;
+          faults.has(k) ? faults.delete(k) : faults.add(k);
+          render(); updateFaultCount();
+        });
+      }
+    }
+    for(let id=0; id<N*N; id++){
+      const [x,y]=pos(id), [gx,gy]=xy(id);
+      const cls = 'node' + (id===src?' src':'') + (id===dst?' dst':'');
+      const g = el('g',{class:cls},gN);
+      el('rect',{x:x-15,y:y-15,width:30,height:30,rx:7},g);
+      const t = el('text',{x,y},g);
+      t.textContent = id===src ? 'S' : id===dst ? 'D' : gx+','+gy;
+      g.addEventListener('click',()=>{
+        if(busy) return;
+        if(pick==='src'){ if(id===dst) dst=src; src=id; setPick('dst'); }
+        else { if(id===src) src=dst; dst=id; }
+        render();
+      });
+    }
+  }
+  function updateFaultCount(){ $('sFaults').textContent = faults.size; }
+
+  /* ---------- 動畫 ---------- */
+  const hopMs = () => 560 - Number($('speed').value)*5;
+  function tween(p,a,b,ms){
+    return new Promise(res=>{
+      const t0=performance.now();
+      function f(t){
+        const k=Math.min(1,(t-t0)/ms), e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+        p.setAttribute('cx',a[0]+(b[0]-a[0])*e);
+        p.setAttribute('cy',a[1]+(b[1]-a[1])*e);
+        k<1 ? requestAnimationFrame(f) : res();
+      }
+      requestAnimationFrame(f);
+    });
+  }
+  async function animate(r){
+    gTrail.innerHTML=''; gPkt.innerHTML='';
+    const start=pos(r.path[0]);
+    const pkt=el('circle',{cx:start[0],cy:start[1],r:9,class:'pkt'},gPkt);
+    for(let i=1;i<r.path.length;i++){
+      const a=pos(r.path[i-1]), b=pos(r.path[i]);
+      const seg=el('line',{x1:a[0],y1:a[1],x2:a[0],y2:a[1],class:'trail'},gTrail);
+      await Promise.all([tween(pkt,a,b,hopMs()), growLine(seg,a,b,hopMs())]);
+    }
+    if(!r.ok && r.blocked){
+      const a=pos(r.blocked[0]), b=pos(r.blocked[1]);
+      const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2], near=[a[0]+(mid[0]-a[0])*.6, a[1]+(mid[1]-a[1])*.6];
+      await tween(pkt,a,near,hopMs()*.6);
+      await tween(pkt,near,a,hopMs()*.6);
+      const s=10;
+      el('line',{x1:mid[0]-s,y1:mid[1]-s,x2:mid[0]+s,y2:mid[1]+s,class:'xmark'},gPkt);
+      el('line',{x1:mid[0]-s,y1:mid[1]+s,x2:mid[0]+s,y2:mid[1]-s,class:'xmark'},gPkt);
+    }
+  }
+  function growLine(line,a,b,ms){
+    return new Promise(res=>{
+      const t0=performance.now();
+      function f(t){
+        const k=Math.min(1,(t-t0)/ms);
+        line.setAttribute('x2',a[0]+(b[0]-a[0])*k);
+        line.setAttribute('y2',a[1]+(b[1]-a[1])*k);
+        k<1 ? requestAnimationFrame(f) : res();
+      }
+      requestAnimationFrame(f);
+    });
+  }
+
+  /* ---------- 發送與結果 ---------- */
+  function setBusy(b){
+    busy=b;
+    ['sendBtn','batchBtn','randBtn','clearBtn','size'].forEach(id=>$(id).disabled=b);
+  }
+  async function send(){
+    if(busy) return;
+    const alg=$('alg').value, r=ROUTERS[alg](src,dst);
+    setBusy(true);
+    $('status').className='hint'; $('status').textContent=`${ALG_NAME[alg]}：封包傳送中…`;
+    await animate(r);
+    setBusy(false);
+    const hops=r.path.length-1, min=manhattan(src,dst);
+    const st=$('status');
+    if(r.ok){
+      st.className='ok';
+      st.textContent = hops===min ? `✓ 送達！走的就是最短路徑。` : `✓ 送達！繞了 ${hops-min} 跳避開故障。`;
+    } else {
+      st.className='bad';
+      st.textContent = r.blocked
+        ? `✕ 失敗：在第 ${hops+1} 跳撞上故障連線，${ALG_NAME[alg]} 無路可走。`
+        : `✕ 失敗：故障把網路切斷了，目的地根本到不了。`;
+    }
+    $('sHops').textContent = r.ok ? hops : `${hops}（中斷）`;
+    $('sMin').textContent = min;
+    $('sDetour').textContent = r.ok ? '+'+(hops-min) : '–';
+    renderCompare();
+  }
+  function renderCompare(){
+    const body=$('cmpBody'); body.innerHTML='';
+    for(const a of ['XY','WF','BFS']){
+      const r=ROUTERS[a](src,dst), tr=document.createElement('tr');
+      tr.innerHTML = `<td>${ALG_NAME[a]}</td><td class="${r.ok?'ok':'bad'}">${r.ok?'送達':'失敗'}</td><td>${r.ok?r.path.length-1:'–'}</td>`;
+      body.appendChild(tr);
+    }
+  }
+  function batch(){
+    const T=300, res={XY:{ok:0,hops:0},WF:{ok:0,hops:0},BFS:{ok:0,hops:0}};
+    let reachable=0;
+    for(let i=0;i<T;i++){
+      const s=Math.floor(Math.random()*N*N);
+      let d; do{ d=Math.floor(Math.random()*N*N); }while(d===s);
+      for(const a in res){
+        const r=ROUTERS[a](s,d);
+        if(r.ok){ res[a].ok++; res[a].hops+=r.path.length-1; }
+      }
+    }
+    const colors={XY:'var(--barXY)',WF:'var(--barWF)',BFS:'var(--barBFS)'};
+    const bars=$('bars'); bars.innerHTML='';
+    for(const a in res){
+      const pct=res[a].ok/T*100, avg=res[a].ok?(res[a].hops/res[a].ok).toFixed(2):'–';
+      const row=document.createElement('div'); row.className='bar-row';
+      row.innerHTML=`<div class="top"><span>${ALG_NAME[a]}</span><span>${pct.toFixed(1)}%　平均 ${avg} 跳</span></div><div class="track"><div class="fill" style="background:${colors[a]}"></div></div>`;
+      bars.appendChild(row);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>row.querySelector('.fill').style.width=pct+'%'));
+    }
+    $('batchHint').textContent = `${N}×${N} 網路、${faults.size} 條故障連線，隨機 ${T} 個封包的結果（BFS 的送達率即為「理論上可達」的比例）。`;
+  }
+
+  /* ---------- 控制項 ---------- */
+  function setPick(v){
+    pick=v;
+    document.querySelectorAll('#pickSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  }
+  document.querySelectorAll('#pickSeg button').forEach(b=>b.addEventListener('click',()=>setPick(b.dataset.v)));
+  $('size').addEventListener('change',e=>{
+    N=Number(e.target.value); faults.clear(); src=0; dst=N*N-1; setPick('src');
+    render(); updateFaultCount();
+  });
+  $('rate').addEventListener('input',e=>$('rateVal').textContent=e.target.value+'%');
+  $('speed').addEventListener('input',e=>{
+    const v=Number(e.target.value);
+    $('speedVal').textContent = v<34?'慢':v<67?'中':'快';
+  });
+  $('randBtn').addEventListener('click',()=>{
+    const p=Number($('rate').value)/100; faults.clear();
+    for(let id=0;id<N*N;id++) for(const dir of ['E','S']){
+      const n=neighbor(id,dir); if(n>=0 && Math.random()<p) faults.add(key(id,n));
+    }
+    render(); updateFaultCount();
+  });
+  $('clearBtn').addEventListener('click',()=>{ faults.clear(); render(); updateFaultCount(); });
+  $('sendBtn').addEventListener('click',send);
+  $('batchBtn').addEventListener('click',batch);
+  $('themeBtn').addEventListener('click',()=>{
+    const root=document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme==='dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+  });
+
+  render(); updateFaultCount(); batch();
+})();
+</script>
+</body>
+</html>
